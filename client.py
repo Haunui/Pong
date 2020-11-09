@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-import clientsocket
+from socketlib import clientsocket
 from threading import Thread
 
 

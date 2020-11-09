@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import serversocket
+from socketlib import serversocket
 
 def test(socket, args):
     print("Hello World")
