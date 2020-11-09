@@ -54,27 +54,4 @@ class SocketClient(Thread):
                                     sys.exit(1)
             except Exception as e:
                 print(str(e))
-                
-        
-
-
-class CommandListener(Thread):
-    def __init__(self, client):
-        self.client = client
-        Thread.__init__(self)
-
-    def run(self):
-        while self.client.status:
-            try:
-                msg = input("")
-                if msg.startswith("/"):
-                    if msg == "/exit":
-                        self.interrupt()
-                else:
-                    self.client.send({"type": "message", "value": msg})
-            except:
-                self.client.socket.close()
-                print("Fermeture du chat..")
-                break
-
 

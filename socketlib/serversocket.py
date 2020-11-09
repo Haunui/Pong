@@ -95,25 +95,3 @@ def addActions(cat, funcname, func):
 
     ACTIONS[cat][funcname] = func
 
-
-
-class CommandListener(Thread):
-    def __init__(self, server):
-        self.server = server
-        Thread.__init__(self)
-
-    def run(self):
-        while self.server.status:
-            try:
-                msg = input("")
-                if msg.startwith("/"):
-                    if msg == "/exit":
-                        for socket in self.server.socketlist:
-                            socket.close()
-
-                        self.server.status = False
-            except:
-                self.server.serversocket.close()
-                print("Fermeture du chat..")
-                break
-
