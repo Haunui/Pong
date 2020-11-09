@@ -24,14 +24,17 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
+# import libraries
 import sys
 import pygame
 from threading import Thread
 import random
 
+# global variables
 window = None
 game = None
 
+# main function
 def main():
     global window
     global game
@@ -44,11 +47,16 @@ def main():
     window.start()
     game.start()
 
+
+# GameWindow Class
+#   This class contain the main loop of the game (started in a thread)
+#   It contain the window's game too
+#   At the init. of the class, the window is setup
 class GameWindow(Thread):
     def __init__(self):
         # Screen setup
         self.size = self.width, self.height = 1280, 720
-        self.bgcolor = (0xCC,0xCC,0xCC)
+        self.bgcolor = (0xFF,0x55,0x55)
         
         # Pygame initialization
         pygame.init()
@@ -62,9 +70,13 @@ class GameWindow(Thread):
             pygame.display.flip()
             pygame.time.delay(10)
 
+
+# Game class
+#   This class manage (action and checking) all entities that is present on the screen
 class Game:
     def __init__(self):
         self.balls = []
+        self.score = [0,0]
 
         for i in range(0,1):
             ball = Ball()
@@ -73,10 +85,26 @@ class Game:
 
         self.players = [Player(0)]
 
+    # Throw all balls
     def start(self):
+        for player in self.players:
+            player.positionning()
+
         for ball in self.balls:
             ball.throw()
-        
+            ball.launched = True
+
+        self.updateScore()
+    
+    # Update scoreboard
+    def updateScore(self):
+        global window
+        font = pygame.font.Font(pygame.font.get_default_font(), 32)
+        self.text = font.render('%d | %d' % (self.score[0], self.score[1]), True, (255,255,255), (255,85,85))
+        self.text_coords = self.text.get_rect()
+        self.text_coords.center = (window.width / 2, self.text_coords.height)
+
+    # This function manage all entities move
     def loop(self):
         global window
         for player in self.players:
@@ -84,30 +112,45 @@ class Game:
             player.move()
         
         for ball in self.balls:
+            if ball.launched == False:
+                continue
+
             ball.move()
         
-            # Racket reached racket position?
+            # check if ball hit border
             border_reached = ball.getBorderReached()
             
             if border_reached > -1:
                 # print("border %d reached" % (border_reached))
 
+
+                # check if someone in the team hit the ball
                 hit = False
                 for player in self.players:
                     if player.team == border_reached:
                         if ball.isHit(player):
                             hit = True
                             break
-
+                
                 if hit == False:
-                    if ball.launched == False:
-                        ball.launched = True
-                    else:
-                        print("Team %d lost the round" % (border_reached))
+                    if border_reached == 0:
+                        self.score[1] += 1
+                    elif border_reached == 1:
+                        self.score[0] += 1
 
-        # Display everything
+                    self.updateScore()
+                    # print("Team %d lost the round" % (border_reached))
+                    # print("ball.x = %d" % (ball.ball_coords.left))
+
+
+        # Display entities
         window.screen.fill(window.bgcolor)
-        
+       
+        try:
+            window.screen.blit(self.text, self.text_coords)
+        except AttributeError:
+            self.updateScore()
+
         for player in self.players:
             player.render()
 
@@ -115,38 +158,50 @@ class Game:
             ball.render()
 
 
+# Ball class
+#   Ball entity's class with some checking and action
 class Ball:
     def __init__(self):
         self.ball_speed = [0, 0]
         
         self._ball = pygame.image.load("image/ball.png")
         self.ball_coords = self._ball.get_rect()
-
+        
+        # fix : border hit before the ball has been throwed
         self.launched = False
 
+
+    # Throw the ball at the beginning of the game
     def throw(self):
         global window
         window_middle = window.width / 2
         sw = random.randint(window_middle - 200, window_middle + 200)
-        print("spawn x : %d" % (sw))
+        # print("spawn x : %d" % (sw))
         self.ball_coords.left = sw
         
         
-        speed = random.randint(2, 5)
+        speed = random.randint(5, 5)
 
         if sw < window_middle / 2:
             vw = speed
         else:
             vw = -speed
         
-        sh = random.randint(10, window.height - 10)
+        sh = random.randint(100, window.height - 100)
         self.ball_coords.top = sh
-
-        vh = speed
+        
+        if sh < window.height / 2:
+            vh = -speed
+        elif sh >= window.height / 2:
+            vh = speed
 
         self.ball_speed = [vw, vh]
 
 
+    # Check if the ball reached the border
+    #   return 0  for border left
+    #   return 1  for border right
+    #   return -1  doesn't reach the border
     def getBorderReached(self):
         global window
         if self.ball_coords.left <= 0: 
@@ -156,6 +211,7 @@ class Ball:
         else:
             return -1
 
+    # Check if 'player' hit the ball
     def isHit(self, player):
         return (self.ball_coords.bottom <= player.racket_coords.top or self.ball_coords.top >= player.racket_coords.bottom) == False
 
@@ -163,15 +219,18 @@ class Ball:
         # Move ball
         self.ball_coords = self.ball_coords.move(self.ball_speed)
         # Bounce ball on walls
-        if self.ball_coords.left < 0 or self.ball_coords.right >= window.width:
+        if self.ball_coords.left <= 0 or self.ball_coords.right >= window.width:
             self.ball_speed[0] = -self.ball_speed[0]
-        if self.ball_coords.top < 0 or self.ball_coords.bottom >= window.height:
+        if self.ball_coords.top <= 0 or self.ball_coords.bottom >= window.height:
             self.ball_speed[1] = -self.ball_speed[1]
 
+    # Render the entity
     def render(self):
         window.screen.blit(self._ball, self.ball_coords)
 
 
+# Player class
+#   Player entity's class with some checking and action
 class Player:
     def __init__(self, team):
         self.team = team
@@ -179,6 +238,13 @@ class Player:
         self.racket = pygame.image.load("image/racket.png")
         self.racket_coords = self.racket.get_rect()
 
+    # Allow, if the player is in team 1, to position his racket on the right side of the window
+    def positionning(self):
+        if self.team == 1:
+            global window
+            self.racket_coords.right = window.width
+
+    # Move the racket
     def move(self):
         # Move racket
         self.racket_coords = self.racket_coords.move(self.racket_speed)
@@ -191,7 +257,8 @@ class Player:
             self.racket_coords.top = 0
         elif self.racket_coords.bottom >= window.height:
             self.racket_coords.bottom = window.height-1
-
+    
+    # Listen keyboard
     def checkMove(self):
         for e in pygame.event.get():
             # Check for exit
@@ -214,7 +281,8 @@ class Player:
                 elif e.key == pygame.K_DOWN:
                     self.racket_speed[1] = 0
                     pass
-
+    
+    # Render the entity
     def render(self):
         global window
         window.screen.blit(self.racket, self.racket_coords)
