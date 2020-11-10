@@ -30,21 +30,57 @@ import pygame
 from threading import Thread
 import random
 from gamelib import countdown
+from socketlib import serversocket, clientsocket
+
+GAME__SOCKET_SERVER = 0
+GAME__SOCKET_CLIENT = 1
 
 GAME__STATUS_LOBBY = 0
 GAME__STATUS_PRESTART = 1
 GAME__STATUS_START = 2
 
 # global variables
+delay = 10
+
 window = None
 game = None
+gamesock = None
 
+player_idc = 0
+ball_idc = 0
 
 # main function
 def main():
     global window
     global game
+    global gamesock
 
+    _type = ""
+    ip = ""
+    port = -1
+
+    while True:
+        _type = input("Mode (server, client):\n")
+        if _type == "server" or _type == "client":
+            break
+        else:
+            print("Mode not found")
+
+    ip = input("IP Address:\n")
+    
+    while True:
+        try:
+            port = int(input("Port:\n"))
+            break
+        except:
+            print("Invalid port")
+
+    if _type == "server":
+        gamesock = GameSocket(GAME__SOCKET_SERVER, (ip, port))
+    else:
+        gamesock = GameSocket(GAME__SOCKET_CLIENT, (ip, port))
+
+    
     game = Game()
     window = GameWindow()
 
@@ -60,6 +96,9 @@ def main():
 #   At the init. of the class, the window is setup
 class GameWindow(Thread):
     def __init__(self):
+        global delay
+        self.delay = delay
+
         # Screen setup
         self.size = self.width, self.height = 1280, 720
         self.bgcolor = (0xFF,0x55,0x55)
@@ -74,8 +113,87 @@ class GameWindow(Thread):
         while True:
             self.game.loop()
             pygame.display.flip()
-            pygame.time.delay(10)
+            pygame.time.delay(self.delay)
 
+
+class GameSocket:
+    def __init__(self, status, addr):
+        global delay
+        self.delay = delay
+
+        self.status = status
+        self.addr = addr
+        
+        if self.status == GAME__SOCKET_SERVER:
+            self.sock = serversocket.SocketServer(self.addr)
+            serversocket.addActions("game", "game", self.receive)
+        elif self.status == GAME__SOCKET_CLIENT:
+            self.sock = clientsocket.SocketClient(self.addr)
+            clientsocket.addActions("game", "game", self.receive)
+
+        self.sock.start()
+
+
+    def send(self, socket, datas):
+        datas = {'type': 'custom', 'value': {'cat': 'game', 'func': 'game', 'args': datas}}
+        if self.status == GAME__SOCKET_CLIENT:
+            self.sock.send(datas)
+        else:
+            if socket == None:
+                self.sock.sendtoall(datas)
+            else:
+                self.sock.send(socket, datas)
+
+    def sendexcept(self, socket, datas):
+        datas = {'type': 'custom', 'value': {'cat': 'game', 'func': 'game', 'args': datas}}
+        self.sock.sendexcept(socket, datas)
+
+    def receive(self, socket, args):
+        
+        global game
+        _type = args[0]
+
+        if _type == "action":
+            action = args[1]
+
+            if action == "prestart":
+                game.prestart()
+            if action == "move":
+                entity = args[2]
+                ident = args[3]
+                x = args[4]
+                y = args[5]
+
+                if entity == "ball":
+                    if self.status == GAME__SOCKET_CLIENT:
+                        for ball in game.balls:
+                            if ball.id == ident:
+                                ball.ball_coords.center = (x, y)
+                                break
+                elif entity == "player": 
+                    for player in game.players:
+                        if player.id == ident:
+                            player.racket_coords.center = (x, y)
+                            break
+                
+                if self.status == GAME__SOCKET_SERVER:
+                    gamesock.sendexcept(socket, [_type, action, entity, ident, x, y])
+        
+        elif _type == "check":
+            if self.status == GAME__SOCKET_CLIENT:
+                check = args[1]
+                
+                if check == "updatescore":
+                    team = args[2]
+                    game.score[team] += 1
+                    game.updateScore()
+
+        elif _type == "config":
+            if self.status == GAME__SOCKET_CLIENT:
+                config = args[1]
+                if config == "delay":
+                    global delay
+                    delay = args[2]
 
 
 
@@ -90,18 +208,26 @@ class Game:
         for i in range(0,1):
             ball = Ball()
             self.balls.append(ball)
+        
 
-
-        self.players = [Player(0)]
+        global gamesock
+        if gamesock.status == GAME__SOCKET_SERVER:
+            self.players = [LocalPlayer(0), Player(1)]
+        elif gamesock.status == GAME__SOCKET_CLIENT:    
+            self.players = [Player(0), LocalPlayer(1)]
 
     # Prestart the game
     def prestart(self): 
         self.status = GAME__STATUS_PRESTART
+        
         for player in self.players:
             player.positionning()
-
-        for ball in self.balls:
-            ball.positionning()
+    
+        global gamesock
+        if gamesock.status == GAME__SOCKET_SERVER:
+            for ball in self.balls:
+                ball.positionning()
+                gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
         
         cd = countdown.Countdown(5000, self.start)
         cd.addPerMSFunc(countdown.CD_PER_D1000, self.displayCountdown, "{CD_PER_D1000}")
@@ -110,9 +236,12 @@ class Game:
     # Start the game 
     def start(self):
         self.status = GAME__STATUS_START
-        for ball in self.balls:
-            ball.throw()
-            ball.launched = True
+
+        global gamesock
+        if gamesock.status == GAME__SOCKET_SERVER:
+            for ball in self.balls:
+                ball.throw()
+                ball.launched = True
 
         self.updateScore()
 
@@ -142,42 +271,52 @@ class Game:
     # This function manage all entities move
     def loop(self):
         global window
-
+        global gamesock
+        
         if self.status == GAME__STATUS_START:
             for player in self.players:
-                player.checkMove()
-                player.move()
-        
-            for ball in self.balls:
-                if ball.launched == False:
-                    continue
+                if isinstance(player, LocalPlayer):
+                    player.checkMove()
+                    player.move()
 
-                ball.move()
+                    gamesock.send(None, ["action", "move", "player", player.id, player.racket_coords.center[0], player.racket_coords.center[1]])
+
+            if gamesock.status == GAME__SOCKET_SERVER:
+                for ball in self.balls:
+                    if ball.launched == False:
+                        continue
+
+                    ball.move()
+                    gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
         
-                # check if ball hit border
-                border_reached = ball.getBorderReached()
+                    # check if ball hit border
+                    border_reached = ball.getBorderReached()
             
-                if border_reached > -1:
-                    # print("border %d reached" % (border_reached))
+                    if border_reached > -1:
+                        # print("border %d reached" % (border_reached))
 
 
-                    # check if someone in the team hit the ball
-                    hit = False
-                    for player in self.players:
-                        if player.team == border_reached:
-                            if ball.isHit(player):
-                                hit = True
-                                break
+                        # check if someone in the team hit the ball
+                        hit = False
+                        for player in self.players:
+                            if player.team == border_reached:
+                                if ball.isHit(player):
+                                    hit = True
+                                    break
                 
-                    if hit == False:
                         if border_reached == 0:
-                            self.score[1] += 1
-                        elif border_reached == 1:
-                            self.score[0] += 1
+                            scorer = 1
+                        else:
+                            scorer = 0
 
-                        self.updateScore()
-                        # print("Team %d lost the round" % (border_reached))
-                        # print("ball.x = %d" % (ball.ball_coords.left))
+                        if hit == False:
+                            self.score[scorer] += 1
+                            self.updateScore()
+
+                            gamesock.send(None, ["check", "updatescore", scorer])
+
+                            # print("Team %d lost the round" % (border_reached))
+                            # print("ball.x = %d" % (ball.ball_coords.left))
 
 
         # Display entities
@@ -203,6 +342,10 @@ class Game:
 #   Ball entity's class with some checking and action
 class Ball:
     def __init__(self):
+        global ball_idc
+        self.id = ball_idc
+        ball_idc += 1
+
         self.ball_speed = [0, 0]
         
         self._ball = pygame.image.load("image/ball.png")
@@ -221,6 +364,7 @@ class Ball:
         
         sh = random.randint(100, window.height - 100)
         self.ball_coords.top = sh
+
 
     # Throw the ball at the beginning of the game
     def throw(self):
@@ -277,6 +421,10 @@ class Ball:
 #   Player entity's class with some checking and action
 class Player:
     def __init__(self, team):
+        global player_idc
+        self.id = player_idc
+        player_idc += 1
+
         self.team = team
         self.racket_speed = [0, 0]
         self.racket = pygame.image.load("image/racket.png")
@@ -302,7 +450,13 @@ class Player:
             self.racket_coords.top = 0
         elif self.racket_coords.bottom >= window.height:
             self.racket_coords.bottom = window.height-1
-    
+        
+    # Render the entity
+    def render(self):
+        global window
+        window.screen.blit(self.racket, self.racket_coords)
+
+class LocalPlayer(Player):
     # Listen keyboard
     def checkMove(self):
         for e in pygame.event.get():
@@ -326,10 +480,7 @@ class Player:
                 elif e.key == pygame.K_DOWN:
                     self.racket_speed[1] = 0
                     pass
-    
-    # Render the entity
-    def render(self):
-        global window
-        window.screen.blit(self.racket, self.racket_coords)
 
 main()
+
+
