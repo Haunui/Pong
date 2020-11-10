@@ -8,11 +8,13 @@ import time
 import re
 
 
-ACTIONS={}
+SERVER_ACTIONS={}
 
 
-class SocketServer():
+class SocketServer(Thread):
     def __init__(self, addr):
+        self.delay = 10
+
         self.socketlist = []
         self.gsocketlist = []
         self.status = True
@@ -28,17 +30,27 @@ class SocketServer():
         self.serversocket.listen()
         self.gsocketlist.append(self.serversocket)
 
+        Thread.__init__(self)
+        Thread.start(self)
+
         print("Serveur socket lancé (%s:%d)" % (self.addr[0], self.addr[1]))
     
     def send(self, socket, datas):
         datas =  {"datas": datas}
-        print(datas)
         socket.send(json.dumps(datas).encode())
         
+    def sendtoall(self, datas):
+        for socket in self.socketlist:
+            self.send(socket, datas)
 
-    def listen(self):
+    def sendexcept(self, target_socket, datas):
+        for socket in self.socketlist:
+            if socket != target_socket:
+                self.send(socket, datas)
+
+    def run(self):
         while self.status:
-            time.sleep(0.01)
+            time.sleep(self.delay / 1000)
             try:
                 sockets,_,_ = select.select(self.gsocketlist, [], [])
                 for sc in sockets:
@@ -58,18 +70,9 @@ class SocketServer():
                             sc.close()
                             print("Connection closed")
                         else:
-                            
                             rd = r.decode()
-                            reqlist = []
-                            multi_req = re.search("(.*\})(\{.*)", rd)
-                            while multi_req is not None:
-                                group = multi_req.group(1)
-                                reqlist.append(group)
-                                rd = rd[len(group):len(rd)]
-                                multi_req = re.search("(.*\})(\{.*)", rd)
-
-                            reqlist.append(rd)
-
+                            reqlist = packet_to_jsonlist(rd)
+                            
                             for req in reqlist:
                                 datas = json.loads(req)
                                 if datas['datas']['type'] == "auth":
@@ -80,18 +83,36 @@ class SocketServer():
                                     funccat = datas['datas']['value']['cat']
                                     funcname = datas['datas']['value']['func']
                                     funcargs = datas['datas']['value']['args']
-                                    func = ACTIONS[funccat][funcname]
-                                    func(socket, funcargs)
-                                else:
-                                    for x in self.socketlist:
-                                        self.send(x, req)       
+                                    
+                                    global SERVER_ACTIONS
+                                    if funccat in SERVER_ACTIONS:
+                                        func = SERVER_ACTIONS[funccat][funcname]
+                                        func(socket, funcargs)
             except KeyboardInterrupt:
                 break
                     
 def addActions(cat, funcname, func):
-    global ACTIONS
-    if cat not in ACTIONS:
-        ACTIONS[cat] = {}
+    global SERVER_ACTIONS
+    if cat not in SERVER_ACTIONS:
+        SERVER_ACTIONS[cat] = {}
 
-    ACTIONS[cat][funcname] = func
+    SERVER_ACTIONS[cat][funcname] = func
 
+
+def packet_to_jsonlist(s):
+    jsonlist = []
+    try:
+        count = 0
+        current = 0
+        for i in range(0, len(s)):
+            if s[i] == '{':
+                count += 1
+            elif s[i] == '}':
+                count -= 1
+                if count == 0:
+                    jsonlist.append(s[current:i+1])
+                    current = i + 1
+    except Exception as e:
+        print(str(e))
+
+    return jsonlist
