@@ -35,9 +35,12 @@ from socketlib import serversocket, clientsocket
 GAME__SOCKET_SERVER = 0
 GAME__SOCKET_CLIENT = 1
 
-GAME__STATUS_LOBBY = 0
+GAME__STATUS_WAITING_FOR_PLAYER = 0
 GAME__STATUS_PRESTART = 1
 GAME__STATUS_START = 2
+
+GAME__TEXT_SIZE__WAITING_FOR_PLAYER = 64
+GAME__TEXT_SIZE__COUNTDOWN = 128
 
 # global variables
 delay = 10
@@ -80,14 +83,15 @@ def main():
     else:
         gamesock = GameSocket(GAME__SOCKET_CLIENT, (ip, port))
 
-    
+
     game = Game()
     window = GameWindow()
-
     window.game = game
-
     window.start()
-    game.prestart()
+
+
+    if gamesock.status == GAME__SOCKET_CLIENT:
+        gamesock.send(None, ['check', 'connect'])
 
 
 # GameWindow Class
@@ -157,7 +161,8 @@ class GameSocket:
             action = args[1]
 
             if action == "prestart":
-                game.prestart()
+                if self.status == GAME__SOCKET_CLIENT:
+                    game.prestart(args[2])
             if action == "move":
                 entity = args[2]
                 ident = args[3]
@@ -179,10 +184,16 @@ class GameSocket:
                 if self.status == GAME__SOCKET_SERVER:
                     gamesock.sendexcept(socket, [_type, action, entity, ident, x, y])
         
-        elif _type == "check":
-            if self.status == GAME__SOCKET_CLIENT:
-                check = args[1]
-                
+        elif _type == "check":    
+            check = args[1]
+            if self.status == GAME__SOCKET_SERVER:
+                if check == "connect":
+                    cdt = 5
+                    game.prestart(cdt)
+                    gamesock.send(None, ['action', 'prestart',cdt])
+
+            elif self.status == GAME__SOCKET_CLIENT:
+
                 if check == "updatescore":
                     team = args[2]
                     game.score[team] += 1
@@ -201,7 +212,7 @@ class GameSocket:
 #   This class manage (action and checking) all entities that is present on the screen
 class Game:
     def __init__(self):
-        self.status = GAME__STATUS_LOBBY
+        self.status = GAME__STATUS_WAITING_FOR_PLAYER
         self.balls = []
         self.score = [0,0]
 
@@ -217,7 +228,7 @@ class Game:
             self.players = [Player(0), LocalPlayer(1)]
 
     # Prestart the game
-    def prestart(self): 
+    def prestart(self, cdt): 
         self.status = GAME__STATUS_PRESTART
         
         for player in self.players:
@@ -229,8 +240,8 @@ class Game:
                 ball.positionning()
                 gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
         
-        cd = countdown.Countdown(5000, self.start)
-        cd.addPerMSFunc(countdown.CD_PER_D1000, self.displayCountdown, "{CD_PER_D1000}")
+        cd = countdown.Countdown(cdt * 1000, self.start)
+        cd.addPerMSFunc(countdown.CD_PER_D1000, self.displayText, "{CD_PER_D1000}", GAME__TEXT_SIZE__COUNTDOWN)
         cd.start()
 
     # Start the game 
@@ -245,20 +256,24 @@ class Game:
 
         self.updateScore()
 
-        self.displayCountdown("Go !")
-        cd = countdown.Countdown(2000, self.displayCountdown, "")
+        self.displayText(["Go !", GAME__TEXT_SIZE__COUNTDOWN])
+        cd = countdown.Countdown(2000, self.hideText)
         cd.start()
     
-    def displayCountdown(self, dtext):
-        if isinstance(dtext, str) == False:
-            dtext = dtext[0]
+    def displayText(self, args):
+        if isinstance(args, str) == False:
+            dtext = args[0]
+            dtext_size = args[1]
 
         global window
 
-        font = pygame.font.Font(pygame.font.get_default_font(), 128)
+        font = pygame.font.Font(pygame.font.get_default_font(), dtext_size)
         self.display_text = font.render(dtext, True, (255,255,255), (255,85,85))
         self.display_text_coords = self.display_text.get_rect()
         self.display_text_coords.center = (window.width / 2, window.height / 2)
+
+    def hideText(self):
+        self.displayText(["", 0])
     
     # Update scoreboard
     def updateScore(self):
@@ -273,6 +288,8 @@ class Game:
         global window
         global gamesock
         
+        if self.status == GAME__STATUS_WAITING_FOR_PLAYER:
+            self.displayText(["En attente de joueur ...", GAME__TEXT_SIZE__WAITING_FOR_PLAYER])
         if self.status == GAME__STATUS_START:
             for player in self.players:
                 if isinstance(player, LocalPlayer):
