@@ -255,8 +255,6 @@ class AbstractGame(Model):
         global window
         global gamesock
         
-        if core.status == GAME__STATUS_WAITING_FOR_PLAYER:
-            self.displayer.displayText(["En attente de joueur ...", GAME__TEXT_SIZE__WAITING_FOR_PLAYER])
         if core.status == GAME__STATUS_START:
             for player in self.players:
                 if isinstance(player, LocalPlayer):
@@ -264,7 +262,6 @@ class AbstractGame(Model):
                     player.move()
                     self.onPlayerMove(player)
 
-                    gamesock.send(None, ["action", "move", "player", player.id, player.racket_coords.center[0], player.racket_coords.center[1]])
 
             if gamesock.status == GAME__SOCKET_SERVER:
                 for ball in self.balls:
@@ -273,7 +270,6 @@ class AbstractGame(Model):
 
                     ball.move()
                     self.onBallMove(ball)
-                    gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
         
                     # check if ball hit border
                     border_reached = ball.getBorderReached()
@@ -346,7 +342,47 @@ class Displayer:
 class Game(AbstractGame):
     def __init__(self):
         Model.__init__(self)
-        self.status = GAME__STATUS_WAITING_FOR_PLAYER
+        self.balls = []
+        self.score = [0,0]
+
+        for i in range(0,1):
+            ball = Ball()
+            self.balls.append(ball)
+        
+        self.players = [LocalPlayer(0)]
+        
+        self.prestart(5)
+
+
+    # Prestart the game
+    def prestart(self, cdt): 
+        AbstractGame.prestart(self, cdt)
+
+        for player in self.players:
+            player.positionning()
+    
+        for ball in self.balls:
+            ball.positionning()
+        
+
+    # Start the game 
+    def start(self):
+        AbstractGame.start(self)
+
+        for ball in self.balls:
+            ball.throw()
+            ball.launched = True
+
+
+    def onBorderReached(self, border):
+        if self.players[0].team == border:
+            self.score[self.players[0].team] += 1
+            self.updateScore()
+
+
+class OnlineGame(AbstractGame):
+    def __init__(self):
+        Model.__init__(self)
         self.balls = []
         self.score = [0,0]
 
@@ -368,7 +404,6 @@ class Game(AbstractGame):
         for player in self.players:
             player.positionning()
     
-        global gamesock
         if gamesock.status == GAME__SOCKET_SERVER:
             for ball in self.balls:
                 ball.positionning()
@@ -379,28 +414,30 @@ class Game(AbstractGame):
     def start(self):
         AbstractGame.start(self)
 
-        global gamesock
-        if gamesock.status == GAME__SOCKET_SERVER:
-            for ball in self.balls:
-                ball.throw()
-                ball.launched = True
-
-    def render(self):
-        AbstractGame.render(self)
-        for player in self.players:
-            player.render()
-
         for ball in self.balls:
-            ball.render()
-
+            ball.throw()
+            ball.launched = True
+    
+    def updateScore(self):
+        self.displayer.displayScoreboard("%d | %d" % (self.score[0], self.score[1]))
+    
+    def loop(self):
+        if core.status == GAME__STATUS_WAITING_FOR_PLAYER:
+            self.displayer.displayText(["En attente de joueur ...", GAME__TEXT_SIZE__WAITING_FOR_PLAYER])
+        AbstractGame.loop(self)
 
     def onPlayerMove(self, player):
-        pass
+        gamesock.send(None, ["action", "move", "player", player.id, player.racket_coords.center[0], player.racket_coords.center[1]])
 
     def onBallMove(self, ball):
-        pass
+        gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
 
-    def onScore(self, scorer):
+    def onBorderReached(self, border):
+        if border == 1:
+            scorer = 0
+        else:
+            scorer = 1
+
         self.score[scorer] += 1
         self.updateScore()
 
