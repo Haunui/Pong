@@ -211,94 +211,62 @@ class GameSocket:
                         core.delay = args[2]
 
 
-
-# Game class
-#   This class manage (action and checking) all entities that is present on the screen
-class Game:
+class Model:
     def __init__(self):
-        self.status = GAME__STATUS_WAITING_FOR_PLAYER
-        self.balls = []
-        self.score = [0,0]
+        self.displayer = Displayer()
 
-        for i in range(0,1):
-            ball = Ball()
-            self.balls.append(ball)
-        
+    def loop(self):
+        pass
 
-        global gamesock
-        if gamesock.status == GAME__SOCKET_SERVER:
-            self.players = [LocalPlayer(0), Player(1)]
-        elif gamesock.status == GAME__SOCKET_CLIENT:    
-            self.players = [Player(0), LocalPlayer(1)]
+    def render(self):
+        # Display entities
+        window.screen.fill(window.bgcolor)
 
-    # Prestart the game
-    def prestart(self, cdt): 
-        self.status = GAME__STATUS_PRESTART
-        
-        for player in self.players:
-            player.positionning()
-    
-        global gamesock
-        if gamesock.status == GAME__SOCKET_SERVER:
-            for ball in self.balls:
-                ball.positionning()
-                gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
-        
+        if hasattr(self.displayer, 'display_text') and hasattr(self.displayer, 'display_text_coords'):
+            window.screen.blit(self.displayer.display_text, self.displayer.display_text_coords)
+
+
+
+class AbstractGame(Model):
+    def prestart(self, cdt):
+        global core
+        core.status = GAME__STATUS_PRESTART
         cd = countdown.Countdown(cdt * 1000, self.start)
-        cd.addPerMSFunc(countdown.CD_PER_D1000, self.displayText, "{CD_PER_D1000}", GAME__TEXT_SIZE__COUNTDOWN)
+        cd.addPerMSFunc(countdown.CD_PER_D1000, self.displayer.displayText, "{CD_PER_D1000}", GAME__TEXT_SIZE__COUNTDOWN)
         cd.start()
 
-    # Start the game 
     def start(self):
-        self.status = GAME__STATUS_START
-
-        global gamesock
-        if gamesock.status == GAME__SOCKET_SERVER:
-            for ball in self.balls:
-                ball.throw()
-                ball.launched = True
-
+        global core
+        core.status = GAME__STATUS_START
+        
         self.updateScore()
 
-        self.displayText(["Go !", GAME__TEXT_SIZE__COUNTDOWN])
-        cd = countdown.Countdown(2000, self.hideText)
+        self.displayer.displayText(["Go !", GAME__TEXT_SIZE__COUNTDOWN])
+        cd = countdown.Countdown(2000, self.displayer.hideText)
         cd.start()
-    
-    def displayText(self, args):
-        if isinstance(args, str) == False:
-            dtext = args[0]
-            dtext_size = args[1]
 
-        global window
 
-        font = pygame.font.Font(pygame.font.get_default_font(), dtext_size)
-        self.display_text = font.render(dtext, True, (255,255,255), (255,85,85))
-        self.display_text_coords = self.display_text.get_rect()
-        self.display_text_coords.center = (window.width / 2, window.height / 2)
-
-    def hideText(self):
-        self.displayText(["", 0])
-    
     # Update scoreboard
     def updateScore(self):
-        global window
         font = pygame.font.Font(pygame.font.get_default_font(), 32)
         self.scoreboard = font.render('%d | %d' % (self.score[0], self.score[1]), True, (255,255,255), (255,85,85))
         self.scoreboard_coords = self.scoreboard.get_rect()
         self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
+        self.displayer.displayScoreboard(self.score)
 
     # This function manage all entities move
     def loop(self):
         global window
         global gamesock
         
-        if self.status == GAME__STATUS_WAITING_FOR_PLAYER:
-            self.displayText(["En attente de joueur ...", GAME__TEXT_SIZE__WAITING_FOR_PLAYER])
-        if self.status == GAME__STATUS_START:
+        if core.status == GAME__STATUS_WAITING_FOR_PLAYER:
+            self.displayer.displayText(["En attente de joueur ...", GAME__TEXT_SIZE__WAITING_FOR_PLAYER])
+        if core.status == GAME__STATUS_START:
             for player in self.players:
                 if isinstance(player, LocalPlayer):
                     player.checkMove()
                     player.move()
+                    self.onPlayerMove(player)
 
                     gamesock.send(None, ["action", "move", "player", player.id, player.racket_coords.center[0], player.racket_coords.center[1]])
 
@@ -308,6 +276,7 @@ class Game:
                         continue
 
                     ball.move()
+                    self.onBallMove(ball)
                     gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
         
                     # check if ball hit border
@@ -325,38 +294,125 @@ class Game:
                                     hit = True
                                     break
                 
-                        if border_reached == 0:
-                            scorer = 1
-                        else:
-                            scorer = 0
-
                         if hit == False:
-                            self.score[scorer] += 1
-                            self.updateScore()
+                            if border_reached == 0:
+                                scorer = 1
+                            else:
+                                scorer = 0
 
-                            gamesock.send(None, ["check", "updatescore", scorer])
+                            self.onScore(border_reached)
+                            
 
-                            # print("Team %d lost the round" % (border_reached))
-                            # print("ball.x = %d" % (ball.ball_coords.left))
+    def onBallMove(self, ball):
+        raise NotImplementedError("Please Implement this method")
+
+    def onPlayerMove(self, player):
+        raise NotImplementedError("Please Implement this method")
+
+    def onScore(self, scorer):
+        raise NotImplementedError("Please Implement this method")
+
+    def render(self):
+        Model.render(self)
+        if core.status == GAME__STATUS_START:
+            if hasattr(self.displayer, 'scoreboard') and hasattr(self.displayer, 'scoreboard_coords'):
+                window.screen.blit(self.displayer.scoreboard, self.displayer.scoreboard_coords)
 
 
-        # Display entities
-        window.screen.fill(window.bgcolor)
+class Displayer:
+    def displayText(self, args):
+        if isinstance(args, str) == False:
+            dtext = args[0]
+            dtext_size = args[1]
 
-        if hasattr(self, 'display_text') and hasattr(self, 'display_text_coords'):
-            window.screen.blit(self.display_text, self.display_text_coords)
+        global window
+
+        font = pygame.font.Font(pygame.font.get_default_font(), dtext_size)
+        self.display_text = font.render(dtext, True, (255,255,255), (255,85,85))
+        self.display_text_coords = self.display_text.get_rect()
+        self.display_text_coords.center = (window.width / 2, window.height / 2)
+
+    def hideText(self):
+        self.displayText(["", 0])
+
+    def displayScoreboard(self, scores):
+        font = pygame.font.Font(pygame.font.get_default_font(), 32)
+        self.scoreboard = font.render('%d | %d' % (scores[0], scores[1]), True, (255,255,255), (255,85,85))
+        self.scoreboard_coords = self.scoreboard.get_rect()
+        self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
+
+    def hideScoreboard(self): 
+        scoreboard_font = pygame.font.Font(pygame.font.get_default_font(), 32)
+        self.scoreboard = scoreboard_font.render('%d | %d' % (scores[0], scores[1]), True, (255,255,255), (255,85,85))
+        self.scoreboard_coords = self.scoreboard.get_rect()
+        self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
+
+
+# Game class
+#   This class manage (action and checking) all entities that is present on the screen
+class Game(AbstractGame):
+    def __init__(self):
+        Model.__init__(self)
+        self.status = GAME__STATUS_WAITING_FOR_PLAYER
+        self.balls = []
+        self.score = [0,0]
+
+        for i in range(0,1):
+            ball = Ball()
+            self.balls.append(ball)
         
-        if self.status == GAME__STATUS_START:
-            try:
-                window.screen.blit(self.scoreboard, self.scoreboard_coords)
-            except AttributeError:
-                self.updateScore()
 
+        global gamesock
+        if gamesock.status == GAME__SOCKET_SERVER:
+            self.players = [LocalPlayer(0), Player(1)]
+        elif gamesock.status == GAME__SOCKET_CLIENT:    
+            self.players = [Player(0), LocalPlayer(1)]
+
+    # Prestart the game
+    def prestart(self, cdt): 
+        AbstractGame.prestart(self, cdt)
+
+        for player in self.players:
+            player.positionning()
+    
+        global gamesock
+        if gamesock.status == GAME__SOCKET_SERVER:
+            for ball in self.balls:
+                ball.positionning()
+                gamesock.send(None, ["action", "move", "ball", ball.id, ball.ball_coords.center[0], ball.ball_coords.center[1]])
+        
+
+    # Start the game 
+    def start(self):
+        AbstractGame.start(self)
+
+        global gamesock
+        if gamesock.status == GAME__SOCKET_SERVER:
+            for ball in self.balls:
+                ball.throw()
+                ball.launched = True
+
+    def render(self):
+        AbstractGame.render(self)
         for player in self.players:
             player.render()
 
         for ball in self.balls:
             ball.render()
+
+
+    def onPlayerMove(self, player):
+        pass
+
+    def onBallMove(self, ball):
+        pass
+
+    def onScore(self, scorer):
+        self.score[scorer] += 1
+        self.updateScore()
+
+        gamesock.send(None, ["check", "updatescore", scorer])
+
 
 
 # Ball class
