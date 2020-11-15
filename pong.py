@@ -35,16 +35,16 @@ from socketlib import serversocket, clientsocket
 GAME__SOCKET_SERVER = 0
 GAME__SOCKET_CLIENT = 1
 
-GAME__STATUS_WAITING_FOR_PLAYER = 0
-GAME__STATUS_PRESTART = 1
-GAME__STATUS_START = 2
+GAME__STATUS_LOBBY = 0
+GAME__STATUS_WAITING_FOR_PLAYER = 1
+GAME__STATUS_PRESTART = 2
+GAME__STATUS_START = 3
 
 GAME__TEXT_SIZE__WAITING_FOR_PLAYER = 64
 GAME__TEXT_SIZE__COUNTDOWN = 128
 
 # global variables
-delay = 10
-
+core = None
 window = None
 game = None
 gamesock = None
@@ -54,6 +54,7 @@ ball_idc = 0
 
 # main function
 def main():
+    global core
     global window
     global game
     global gamesock
@@ -78,52 +79,55 @@ def main():
         except:
             print("Invalid port")
 
+
+    core = GameCore(10)
+
     if _type == "server":
         gamesock = GameSocket(GAME__SOCKET_SERVER, (ip, port))
     else:
         gamesock = GameSocket(GAME__SOCKET_CLIENT, (ip, port))
 
-
-    game = Game()
+    model = Game()
     window = GameWindow()
-    window.game = game
-    window.start()
+    core.model = model
+    core.start()
 
+    core.status = GAME__STATUS_WAITING_FOR_PLAYER
 
     if gamesock.status == GAME__SOCKET_CLIENT:
         gamesock.send(None, ['check', 'connect'])
+
+
+class GameCore(Thread):
+    def __init__(self, delay):
+        self.status = GAME__STATUS_LOBBY
+        self.delay = delay
+        pygame.init()
+        Thread.__init__(self)
+
+    def run(self):
+        while True:
+            self.model.loop()
+            self.model.render()
+            pygame.display.flip()
+            pygame.time.delay(self.delay)
 
 
 # GameWindow Class
 #   This class contain the main loop of the game (started in a thread)
 #   It contain the window's game too
 #   At the init. of the class, the window is setup
-class GameWindow(Thread):
+class GameWindow:
     def __init__(self):
-        global delay
-        self.delay = delay
-
         # Screen setup
         self.size = self.width, self.height = 1280, 720
         self.bgcolor = (0xFF,0x55,0x55)
-        
-        # Pygame initialization
-        pygame.init()
         self.screen = pygame.display.set_mode(self.size)
-
-        Thread.__init__(self)
-
-    def run(self):
-        while True:
-            self.game.loop()
-            pygame.display.flip()
-            pygame.time.delay(self.delay)
 
 
 class GameSocket:
     def __init__(self, status, addr):
-        global delay
-        self.delay = delay
+        self.delay = core.delay
 
         self.status = status
         self.addr = addr
