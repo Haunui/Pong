@@ -248,11 +248,7 @@ class AbstractGame(Model):
 
     # Update scoreboard
     def updateScore(self):
-        font = pygame.font.Font(pygame.font.get_default_font(), 32)
-        self.scoreboard = font.render('%d | %d' % (self.score[0], self.score[1]), True, (255,255,255), (255,85,85))
-        self.scoreboard_coords = self.scoreboard.get_rect()
-        self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
-        self.displayer.displayScoreboard(self.score)
+        self.displayer.displayScoreboard(self.score[0])
 
     # This function manage all entities move
     def loop(self):
@@ -342,10 +338,7 @@ class Displayer:
         self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
 
     def hideScoreboard(self): 
-        scoreboard_font = pygame.font.Font(pygame.font.get_default_font(), 32)
-        self.scoreboard = scoreboard_font.render('%d | %d' % (scores[0], scores[1]), True, (255,255,255), (255,85,85))
-        self.scoreboard_coords = self.scoreboard.get_rect()
-        self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
+        self.displayScoreboard(self, scores)
 
 
 # Game class
