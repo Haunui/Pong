@@ -87,8 +87,8 @@ def main():
     else:
         gamesock = GameSocket(GAME__SOCKET_CLIENT, (ip, port))
 
-    model = Game()
     window = GameWindow()
+    model = Game()
     core.model = model
     core.start()
 
