@@ -310,6 +310,12 @@ class AbstractGame(Model):
             if hasattr(self.displayer, 'scoreboard') and hasattr(self.displayer, 'scoreboard_coords'):
                 window.screen.blit(self.displayer.scoreboard, self.displayer.scoreboard_coords)
 
+        for player in self.players:
+            player.render()
+
+        for ball in self.balls:
+            ball.render()
+
 
 class Displayer:
     def displayText(self, args):
