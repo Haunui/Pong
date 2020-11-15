@@ -337,7 +337,7 @@ class Displayer:
 
     def displayScoreboard(self, scores):
         font = pygame.font.Font(pygame.font.get_default_font(), 32)
-        self.scoreboard = font.render('%d | %d' % (scores[0], scores[1]), True, (255,255,255), (255,85,85))
+        self.scoreboard = font.render('%s' % (scores), True, (255,255,255), (255,85,85))
         self.scoreboard_coords = self.scoreboard.get_rect()
         self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
 
