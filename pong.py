@@ -88,6 +88,7 @@ def main():
         gamesock = GameSocket(GAME__SOCKET_CLIENT, (ip, port))
 
     window = GameWindow()
+    #model = OnlineGame() # Uncomment this line and comment the line below to play online
     model = Game()
     core.model = model
     core.start()
