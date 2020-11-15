@@ -285,24 +285,24 @@ class AbstractGame(Model):
                                 if ball.isHit(player):
                                     hit = True
                                     break
-                
+                        
                         if hit == False:
-                            if border_reached == 0:
-                                scorer = 1
-                            else:
-                                scorer = 0
-
-                            self.onScore(border_reached)
+                            self.onBorderReached(border_reached)
+                        else:
+                            self.onRacketReached(border_reached)
                             
 
     def onBallMove(self, ball):
-        raise NotImplementedError("Please Implement this method")
+        pass
 
     def onPlayerMove(self, player):
-        raise NotImplementedError("Please Implement this method")
+        pass
 
-    def onScore(self, scorer):
-        raise NotImplementedError("Please Implement this method")
+    def onBorderReached(self, border):
+        pass
+    
+    def onRacketReached(self, border):
+        pass
 
     def render(self):
         Model.render(self)
