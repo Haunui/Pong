@@ -317,31 +317,6 @@ class AbstractGame(Model):
             ball.render()
 
 
-class Displayer:
-    def displayText(self, args):
-        if isinstance(args, str) == False:
-            dtext = args[0]
-            dtext_size = args[1]
-
-        global window
-
-        font = pygame.font.Font(pygame.font.get_default_font(), dtext_size)
-        self.display_text = font.render(dtext, True, (255,255,255), (255,85,85))
-        self.display_text_coords = self.display_text.get_rect()
-        self.display_text_coords.center = (window.width / 2, window.height / 2)
-
-    def hideText(self):
-        self.displayText(["", 0])
-
-    def displayScoreboard(self, scores):
-        font = pygame.font.Font(pygame.font.get_default_font(), 32)
-        self.scoreboard = font.render('%s' % (scores), True, (255,255,255), (255,85,85))
-        self.scoreboard_coords = self.scoreboard.get_rect()
-        self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
-
-    def hideScoreboard(self): 
-        self.displayScoreboard(self, scores)
-
 
 # Game class
 #   This class manage (action and checking) all entities that is present on the screen
@@ -505,7 +480,7 @@ class Ball:
     #   return -1  doesn't reach the border
     def getBorderReached(self):
         global window
-        if self.ball_coords.left <= 0: 
+        if self.ball_coords.left <= 0:
             return 0
         elif self.ball_coords.right >= window.width:
             return 1
@@ -566,7 +541,6 @@ class Player:
         
     # Render the entity
     def render(self):
-        global window
         window.screen.blit(self.racket, self.racket_coords)
 
 class LocalPlayer(Player):
@@ -594,6 +568,31 @@ class LocalPlayer(Player):
                     self.racket_speed[1] = 0
                     pass
 
+
+class Displayer:
+    def displayText(self, args):
+        if isinstance(args, str) == False:
+            dtext = args[0]
+            dtext_size = args[1]
+
+        global window
+
+        font = pygame.font.Font(pygame.font.get_default_font(), dtext_size)
+        self.display_text = font.render(dtext, True, (255,255,255), (255,85,85))
+        self.display_text_coords = self.display_text.get_rect()
+        self.display_text_coords.center = (window.width / 2, window.height / 2)
+
+    def hideText(self):
+        self.displayText(["", 0])
+
+    def displayScoreboard(self, scores):
+        font = pygame.font.Font(pygame.font.get_default_font(), 32)
+        self.scoreboard = font.render('%s' % (scores), True, (255,255,255), (255,85,85))
+        self.scoreboard_coords = self.scoreboard.get_rect()
+        self.scoreboard_coords.center = (window.width / 2, self.scoreboard_coords.height)
+
+    def hideScoreboard(self): 
+        self.displayScoreboard(self, scores)
+
+
 main()
-
-
