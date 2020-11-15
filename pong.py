@@ -157,58 +157,58 @@ class GameSocket:
         self.sock.sendexcept(socket, datas)
 
     def receive(self, socket, args):
-        
-        global game
         _type = args[0]
 
         if _type == "action":
             action = args[1]
-
-            if action == "prestart":
-                if self.status == GAME__SOCKET_CLIENT:
-                    game.prestart(args[2])
-            if action == "move":
-                entity = args[2]
-                ident = args[3]
-                x = args[4]
-                y = args[5]
-
-                if entity == "ball":
+            
+            if core.status == GAME__STATUS_WAITING_FOR_PLAYER or core.status == GAME__STATUS_PRESTART or core.status == GAME__STATUS_START:
+                if action == "prestart":
                     if self.status == GAME__SOCKET_CLIENT:
-                        for ball in game.balls:
-                            if ball.id == ident:
-                                ball.ball_coords.center = (x, y)
+                        core.model.prestart(args[2])
+                if action == "move":
+                    entity = args[2]
+                    ident = args[3]
+                    x = args[4]
+                    y = args[5]
+
+                    if entity == "ball":
+                        if self.status == GAME__SOCKET_CLIENT:
+                            for ball in core.model.balls:
+                                if ball.id == ident:
+                                    ball.ball_coords.center = (x, y)
+                                    break
+                    elif entity == "player": 
+                        for player in core.model.players:
+                            if player.id == ident:
+                                player.racket_coords.center = (x, y)
                                 break
-                elif entity == "player": 
-                    for player in game.players:
-                        if player.id == ident:
-                            player.racket_coords.center = (x, y)
-                            break
                 
+                    if self.status == GAME__SOCKET_SERVER:
+                        gamesock.sendexcept(socket, [_type, action, entity, ident, x, y])
+       
+
+        if core.status == GAME__STATUS_WAITING_FOR_PLAYER or core.status == GAME__STATUS_PRESTART or core.status == GAME__STATUS_START:
+            if _type == "check":    
+                check = args[1]
                 if self.status == GAME__SOCKET_SERVER:
-                    gamesock.sendexcept(socket, [_type, action, entity, ident, x, y])
-        
-        elif _type == "check":    
-            check = args[1]
-            if self.status == GAME__SOCKET_SERVER:
-                if check == "connect":
-                    cdt = 5
-                    game.prestart(cdt)
-                    gamesock.send(None, ['action', 'prestart',cdt])
+                    if check == "connect":
+                        cdt = 5
+                        core.model.prestart(cdt)
+                        gamesock.send(None, ['action', 'prestart',cdt])
 
-            elif self.status == GAME__SOCKET_CLIENT:
+                elif self.status == GAME__SOCKET_CLIENT:
 
-                if check == "updatescore":
-                    team = args[2]
-                    game.score[team] += 1
-                    game.updateScore()
+                    if check == "updatescore":
+                        team = args[2]
+                        core.model.score[team] += 1
+                        core.model.updateScore()
 
-        elif _type == "config":
-            if self.status == GAME__SOCKET_CLIENT:
-                config = args[1]
-                if config == "delay":
-                    global delay
-                    delay = args[2]
+            elif _type == "config":
+                if self.status == GAME__SOCKET_CLIENT:
+                    config = args[1]
+                    if config == "delay":
+                        core.delay = args[2]
 
 
 
