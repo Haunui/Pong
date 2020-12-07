@@ -1,11 +1,14 @@
 from gameutils import countdown
-from gamemode.model import Model
+from gamecore.model import Model
 from gamecore import core as m_core, window as m_win, sock as m_sock
 from gameentities.localplayer import LocalPlayer
 
 class AbstractGame(Model):
     def __init__(self, core, window, gamesock):
         Model.__init__(self, window)
+
+        self.displayer = Displayer(self.window)
+        
         self.core = core
         self.gamesock = gamesock
 
@@ -83,7 +86,12 @@ class AbstractGame(Model):
         pass
 
     def render(self):
-        Model.render(self)
+        # Display entities
+        self.window.screen.fill(self.window.bgcolor)
+
+        if hasattr(self.displayer, 'display_text') and hasattr(self.displayer, 'display_text_coords'):
+            self.window.screen.blit(self.displayer.display_text, self.displayer.display_text_coords)
+        
         if self.core.status == m_core.GAME__STATUS_START:
             if hasattr(self.displayer, 'scoreboard') and hasattr(self.displayer, 'scoreboard_coords'):
                 self.window.screen.blit(self.displayer.scoreboard, self.displayer.scoreboard_coords)
